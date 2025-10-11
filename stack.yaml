@@ -1,9 +1,1 @@
-flags: {}
-extra-package-dbs: []
-packages:
-- .
-extra-deps:
-- encoding-0.8.9
-- regex-compat-0.95.2.1
-- split-0.2.5
-resolver: lts-21.25
+stack-9.6.yaml
