@@ -7,10 +7,7 @@ There are plans to support other games and pretty-printing in future releases.
 -}
 module Data.SGF (
     module Data.SGF.Types,
-    module Data.SGF.Parse,
-    module Data.Word,
-    module Data.Tree,
-    module Text.ParserCombinators.Parsec
+    collection,
     -- * Overview of SGF
     -- $sgf
 
@@ -19,13 +16,22 @@ module Data.SGF (
 
     -- * Example usage
     -- $example
+
+    -- * Convenience reexports
+    Word8,
+    Tree(..), levels,
+    runParser,
+    B.ByteString, B.getContents, B.unpack, B.readFile
 ) where
 
 import Data.SGF.Types
 import Data.SGF.Parse (collection)
-import Data.Word
-import Data.Tree
+
+import Data.Word (Word8)
+import Data.Tree (Tree(..), levels)
 import Text.ParserCombinators.Parsec (runParser)
+
+import qualified Data.ByteString as B
 
 -- TODO:
 -- * support parsing from ByteString, then take the "unpack" out of "parse" below
@@ -99,8 +105,6 @@ obscure the idea.)
 First, some boring stuff.
 
 > import Data.SGF
-> import Data.ByteString  (ByteString, getContents, unpack)
-> import Data.Tree
 > import Data.List hiding ((!!))
 > import Prelude   hiding ((!!), getContents)
 >

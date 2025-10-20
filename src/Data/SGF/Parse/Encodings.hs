@@ -1,15 +1,12 @@
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
 
-module Data.SGF.Parse.Encodings
-    ( guessEncoding
-    , decodeWordStringExplicit
+module Data.SGF.Parse.Encodings (
+        module Data.SGF.Parse.Encodings,
+        encodingFromString
     ) where
 
-import Control.Applicative (Applicative(..))
-import Control.Exception.Extensible
 import Control.Monad (ap, liftM)
 import Control.Monad.State
 import Control.Throws
@@ -27,13 +24,13 @@ instance Functor (MyEither a) where
 
 instance Applicative (MyEither a) where
     pure :: a2 -> MyEither a1 a2
-    pure x = return x -- note that an eta reduced version of this trips the type checker for non-canonical "pure = return"
+    pure x = MyEither (Right x)
     (<*>) :: MyEither a1 (a2 -> b) -> MyEither a1 a2 -> MyEither a1 b
     (<*>) = ap
 
 instance Monad (MyEither a) where
     (MyEither (Right x)) >>= f = f x
-    (MyEither (Left x)) >>= f = MyEither (Left x)
+    (MyEither (Left x)) >>= _ = MyEither (Left x)
 
 instance ByteSource (StateT [Word8] (MyEither DecodingException)) where
     sourceEmpty = gets null
@@ -49,8 +46,10 @@ instance ByteSource (StateT [Word8] (MyEither DecodingException)) where
         return v
 
 -- some ones that we know satisfy our invariant (see SGF.Parse.Raw)
+encodings :: [DynEncoding]
 encodings = map encodingFromString ["latin1", "utf-8", "ascii"]
 
+guess :: [Word8] -> DynEncoding -> Bool
 guess ws encoding =
     case runStateT (decode encoding) ws :: MyIHateGHC of
         (MyEither (Right (s, []))) ->

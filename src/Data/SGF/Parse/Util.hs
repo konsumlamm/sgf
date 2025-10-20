@@ -4,19 +4,18 @@ module Data.SGF.Parse.Util where
 import Control.Arrow (Arrow (first, second, (&&&)))
 import Control.Monad (liftM, liftM2, when, (>=>))
 import Control.Monad.State (MonadState (get), MonadTrans (lift), StateT (StateT), gets, modify)
-import qualified Control.Monad.Trans.Except as Either
-import Control.Monad.Writer (MonadTrans (lift), MonadWriter (tell), WriterT)
+import Control.Monad.Writer (MonadWriter (tell), WriterT)
 import Data.Char (isDigit, isSpace, toLower)
 import Data.Encoding (DynEncoding)
 import Data.Function (on)
 import Data.Ix (Ix (range))
 import Data.List (groupBy, isPrefixOf, nub, partition, sortBy)
-import Data.Map (Map (..), fromList, keys)
+import Data.Map (Map, fromList, keys)
 import Data.Maybe (fromJust, listToMaybe)
 import Data.Ord (comparing)
 import Data.SGF.Parse.Encodings (decodeWordStringExplicit)
 import Data.SGF.Parse.Raw (Property (..), enum)
-import Data.SGF.Types (Color (..), Emphasis (..), Judgment, Mark, PartialDate, Point)
+import Data.SGF.Types.Internal (Color (..), Emphasis (..), Judgment, Mark, PartialDate, Point)
 import Data.Set (Set)
 import Data.Tree (Tree (rootLabel))
 import Data.Word (Word8)
@@ -136,11 +135,11 @@ readNumber s pos
 
 newline :: a -> (String -> a) -> (Char -> String -> a) -> String -> a
 newline empty with without xs = case xs of
-  '\r' : '\n' : xs -> with xs
-  '\n' : '\r' : xs -> with xs
-  '\r' : xs -> with xs
-  '\n' : xs -> with xs
-  x : xs -> without x xs
+  '\r' : '\n' : xs' -> with xs'
+  '\n' : '\r' : xs' -> with xs'
+  '\r' : xs' -> with xs'
+  '\n' : xs' -> with xs'
+  x : xs' -> without x xs'
   [] -> empty
 
 trim :: Char -> Char
@@ -156,8 +155,10 @@ descape hard pos s = case s of
 decodeAndDescape :: Char -> Header -> PTranslator String
 decodeAndDescape hard (Header {encoding = e}) (Property {values = v : _, position = pos}) =
   case decodeWordStringExplicit e v of
-    Left exception -> dieWithPos BadlyEncodedValue pos
+    Left _exception -> dieWithPos BadlyEncodedValue pos
     Right decoded -> descape hard pos decoded
+decodeAndDescape _ (Header _ _) (Property _ _ []) =
+  error "decodeAndDescape error"
 
 splitColon :: [Word8] -> Maybe ([Word8], [Word8])
 splitColons :: [[Word8]] -> Maybe ([[Word8]], [[Word8]])
@@ -191,7 +192,7 @@ hasAny = fmap or . mapM has
 consume :: String -> Translator (Maybe Property)
 consume s = do
   (v, rest) <- gets (partition ((== s) . name) . rootLabel)
-  modify (\s -> s {rootLabel = rest})
+  modify (\s' -> s' {rootLabel = rest})
   return (listToMaybe v)
 
 consumeSingle :: String -> Translator (Maybe Property)
@@ -206,17 +207,19 @@ consumeSingle s = do
 unknownProperties :: Translator (Map String [[Word8]])
 unknownProperties = do
   m <- gets (fromList . map (name &&& values) . rootLabel)
-  tell [UnknownPropertyPreserved name | name <- keys m]
+  tell [UnknownPropertyPreserved pnam | pnam <- keys m]
   return m
 
 -- }}}
 -- PTranslators and combinators {{{
 number :: PTranslator Integer
+number (Property _ _ []) = error "number: empty property list"
 number p@(Property {values = v : _})
   | enum '.' `elem` v = dieWith BadlyFormattedValue p
   | otherwise = fmap floor (real p)
 
 real :: PTranslator Rational
+real (Property _ _ []) = error "real: empty property list"
 real (Property {values = v : _, position = pos})
   | [enum '+'] `isPrefixOf` v = result 1
   | [enum '-'] `isPrefixOf` v = fmap negate (result 1)
@@ -241,7 +244,7 @@ none (Property {values = [[]]}) = return ()
 none p = tell [PropValueForNonePropertyOmitted p]
 
 choice :: [([Word8], a)] -> PTranslator a
-choice vs p@(Property {values = []}) = dieWith BadlyFormattedValue p -- can't happen
+choice _vs p@(Property {values = []}) = dieWith BadlyFormattedValue p -- can't happen
 choice vs p@(Property {values = v : _}) = maybe (dieWith BadlyFormattedValue p) return (lookup v vs)
 
 choice' :: [(String, a)] -> PTranslator a
@@ -266,6 +269,8 @@ elistOf _ (Property {values = [[]]}) = return []
 elistOf a p = listOf a p
 
 mayBeCompoundPoint, listOfPoint, elistOfPoint :: PTranslator Point -> PTranslator [Point]
+mayBeCompoundPoint _ (Property _ _ []) =
+  error "mayBeCompoundPoint: empty property list"
 mayBeCompoundPoint a p@(Property {values = v : _}) = case splitColon v of
   Nothing -> return <$> a p
   Just {} -> do
